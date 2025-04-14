@@ -1,0 +1,9 @@
+pandas==2.2.2
+scikit-learn==1.5.2
+xgboost==2.0.3
+joblib==1.4.2
+PyYAML==6.0.2
+chardet==5.2.0
+psutil==5.9.8
+numpy==1.26.4
+pyarrow==19.0.1

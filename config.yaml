@@ -1,0 +1,52 @@
+data_collection:
+  input_data_path: "data/raw/shopping_data.csv"
+  raw_data_dir: "data/raw_batches"
+  metadata_dir: "data/metadata"
+
+data_analysis:
+  report_dir: "reports/data_quality"
+
+data_preprocessing:
+  processed_dir: "data/processed"
+  preprocessor_path: "models/preprocessor.joblib"
+  numeric_features:
+    - Sales
+    - Quantity
+    - Discount
+    - Profit
+    - Shipping Cost
+  categorical_features:
+    - Ship Mode
+    - Segment
+    - Category
+    - Sub-Category
+    - Region
+
+model_training:
+  model_path: "models/xgb_model.joblib"
+  metrics_path: "reports/model_metrics.json"
+  target_column: "DeliveryTime"
+  test_size: 0.2
+  processed_data_dir: "data/processed"
+  model_params:
+    n_estimators: 200
+    max_depth: 6
+    learning_rate: 0.1
+    subsample: 0.8
+    colsample_bytree: 0.8
+    early_stopping_rounds: 10
+  training_params:
+    verbose: False
+
+
+model_validation:
+  model_path: "models/xgb_model.joblib"
+  preprocessor_path: "models/preprocessor.joblib"
+  validation_data_path: "data/validation/validation_data.csv"
+  target_column: "DeliveryTime"
+  validation_report_path: "reports/validation_report.json"
+  model_version: "1.1"
+
+model_serving:
+  model_path: "models/xgb_model.joblib"
+  preprocessor_path: "models/preprocessor.joblib"
