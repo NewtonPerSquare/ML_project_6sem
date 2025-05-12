@@ -1,0 +1,6 @@
+2025-05-12 03:03:03,590 - INFO - Model loaded successfully
+2025-05-12 03:03:20,269 - INFO - Detected encoding: Windows-1252
+2025-05-12 03:03:20,709 - INFO - Initial rows: 51290
+2025-05-12 03:03:20,848 - INFO - Features added successfully
+2025-05-12 03:03:20,870 - INFO - Final rows: 51290
+2025-05-12 03:03:20,871 - INFO - Using model: decision_tree

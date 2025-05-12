@@ -1,3 +1,11 @@
-2025-04-14 03:58:37,688 - INFO - Инициализирована новая модель XGBoost
-2025-04-14 03:58:37,698 - INFO - Метрики: {'MAE': 0.7840102720572111, 'MSE': 0.9263396453000796}
-2025-04-14 03:58:37,702 - INFO - Обучение успешно завершено
+2025-05-12 03:01:37,626 - INFO - Loading processed data from data/processed
+2025-05-12 03:01:38,079 - INFO - Data split: train=40472, val=10119
+2025-05-12 03:01:38,080 - INFO - Starting training for model type: decision_tree
+2025-05-12 03:01:38,080 - INFO - Loaded existing decision_tree model for update
+2025-05-12 03:01:38,227 - INFO - Retrained decision_tree model from scratch
+2025-05-12 03:01:38,230 - INFO - Validation metrics:
+MAE: 0.6832101671710763
+MSE: 0.7462042129173091
+R2: 0.7512247798216272
+2025-05-12 03:01:38,230 - INFO - Metrics saved to models/decision_tree.joblib
+2025-05-12 03:01:38,231 - INFO - Model saved to models/decision_tree.joblib

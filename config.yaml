@@ -1,10 +1,23 @@
 data_collection:
+  batch_window: "W"  #d, w or m
   input_data_path: "data/raw/shopping_data.csv"
   raw_data_dir: "data/raw_batches"
   metadata_dir: "data/metadata"
 
 data_analysis:
   report_dir: "reports/data_quality"
+  date_format: "%Y-%m-%d"
+  enable_eda: true
+  data_drift:
+    enabled: true
+    threshold: 0.2
+  features:
+    new_features: ["Order_DayOfWeek", "DeliverySpeed"]
+  date_columns:
+    - Order Date
+    - Ship Date
+  target_column: DeliveryTime
+  delivery_bins: [0, 3, 7, 100]
 
 data_preprocessing:
   processed_dir: "data/processed"
@@ -15,32 +28,45 @@ data_preprocessing:
     - Discount
     - Profit
     - Shipping Cost
+    - Order_DayOfWeek
   categorical_features:
     - Ship Mode
     - Segment
     - Category
     - Sub-Category
     - Region
+    - DeliverySpeed
+  na_handling:
+    numeric: 'median'
+    categorical: 'most_frequent'
 
 model_training:
-  model_path: "models/xgb_model.joblib"
+  model_type: "xgboost"  #xgboost | linear | decision_tree
   metrics_path: "reports/model_metrics.json"
   target_column: "DeliveryTime"
   test_size: 0.2
   processed_data_dir: "data/processed"
+  
   model_params:
-    n_estimators: 200
-    max_depth: 6
-    learning_rate: 0.1
-    subsample: 0.8
-    colsample_bytree: 0.8
-    early_stopping_rounds: 10
+    xgboost:
+      n_estimators: 200
+      max_depth: 6
+      learning_rate: 0.1
+      subsample: 0.8
+      colsample_bytree: 0.8
+      early_stopping_rounds: 10
+    linear:
+      fit_intercept: true
+    decision_tree:
+      max_depth: 8
+      min_samples_split: 10
+
   training_params:
     verbose: False
 
 
 model_validation:
-  model_path: "models/xgb_model.joblib"
+  model_path: "models/xgboost.joblib"
   preprocessor_path: "models/preprocessor.joblib"
   validation_data_path: "data/validation/validation_data.csv"
   target_column: "DeliveryTime"
@@ -48,5 +74,14 @@ model_validation:
   model_version: "1.1"
 
 model_serving:
-  model_path: "models/xgb_model.joblib"
+  model_paths:
+    xgboost: "models/xgboost.joblib"
+    decision_tree: "models/decision_tree.joblib"
+    linear: "models/linear.joblib"
+  date_settings:
+    input_format: "%d-%m-%Y"
+    output_format: "%Y-%m-%d"
   preprocessor_path: "models/preprocessor.joblib"
+  model_selection:
+    missing_threshold: 0.3
+    default: "xgboost"
