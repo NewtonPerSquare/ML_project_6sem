@@ -183,3 +183,6 @@ python run.py -mode update
 python run.py -mode inference -file data/raw/shopping_data.csv -model xgboost
 
 python run.py -mode summary
+
+
+Этапы 1, 3, 4, 5 были разработаны Холевенковой Варварой, этапы 2, 6, 7 - Паскаль Егором.
