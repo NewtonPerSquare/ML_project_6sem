@@ -1,4 +1,4 @@
-#Холевенкова Варвара
+# Холевенкова Варвара
 import pandas as pd
 import yaml
 import joblib
@@ -9,35 +9,46 @@ from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 import os
 import chardet
-                                                                            #Настройка логирования
+
+# Настройка логирования
 logging.basicConfig(
     filename='logs/data_preprocessing.log',
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    filemode='w' # 'a'
 )
 
 
 def load_config():
+    """Загружает конфигурацию из YAML"""
     with open('config.yaml', 'r') as f:
         return yaml.safe_load(f)
 
-def detect_encoding(file_path):                             #Определяем кодировку (без этого постоянно падает)
+
+def detect_encoding(file_path):
+    """Определяем кодировку (без этого постоянно падает)"""
     with open(file_path, 'rb') as f:
         result = chardet.detect(f.read())
     return result['encoding']
 
 
-def create_preprocessor(config):                                            #Пайплайн предобработки(простенькой) данных
+def create_preprocessor(config):
+    """Пайплайн предобработки(простенькой) данных"""
     numeric_features = config['numeric_features']
     categorical_features = config['categorical_features']
 
-    numeric_transformer = Pipeline(steps=[                                  #Для целочисленных признаков
-        ('imputer', SimpleImputer(strategy='median')),
+    # Для целочисленных признаков
+    numeric_transformer = Pipeline(steps=[
+        ('imputer', SimpleImputer(strategy=config['na_handling']['numeric'])),
         ('scaler', StandardScaler())
     ])
 
-    categorical_transformer = Pipeline(steps=[                              #Для категориальных
-        ('imputer', SimpleImputer(strategy='most_frequent')),
+    # Для категориальных
+    categorical_transformer = Pipeline(steps=[
+        ('imputer', SimpleImputer(
+            strategy=config['na_handling']['categorical'],
+            fill_value='Unknown'
+        )),
         ('onehot', OneHotEncoder(handle_unknown='ignore', sparse_output=False))
     ])
 
@@ -50,105 +61,115 @@ def create_preprocessor(config):                                            #П�
     return preprocessor
 
 
-def process_batches(config):                                        #Побатчевая предобработка
-    raw_data_dir = config['data_collection']['raw_data_dir']
-    processed_dir = config['data_preprocessing']['processed_dir']
-    target_column = config['model_training']['target_column']
+def process_batches(config):
+    """Побатчевая предобработка данных с обработкой пропусков"""
+    try:
+        # Получаем конфигурации из полного конфига
+        preprocessing_config = config['data_preprocessing']
+        model_config = config['model_training']
 
-    os.makedirs(processed_dir, exist_ok=True)
+        raw_data_dir = 'data/cleaned'
+        processed_dir = preprocessing_config['processed_dir']
+        target_column = model_config['target_column']
 
-    #Сбор и проверка данных
-    all_data = []
-    for batch_file in os.listdir(raw_data_dir):
-        if batch_file.endswith('.csv'):
+        os.makedirs(processed_dir, exist_ok=True)
+
+
+        # Сбор данных с валидацией
+        all_data = []
+        for batch_file in os.listdir(raw_data_dir):
+            if not batch_file.startswith('batch_'):
+                continue
+
             batch_path = os.path.join(raw_data_dir, batch_file)
-            df = pd.read_csv(batch_path)
+            try:
+                # Чтение с обработкой ошибок
+                df = pd.read_csv(
+                    batch_path,
+                    engine='python',
+                    on_bad_lines='skip',
+                    dtype_backend='pyarrow'
+                )
 
-            #Проверка структуры данных
-            required_cols = (
-                    config['data_preprocessing']['numeric_features'] +
-                    config['data_preprocessing']['categorical_features'] +
-                    [target_column]
-            )
-            if not set(required_cols).issubset(df.columns):
+                # Проверка обязательных колонок
+                required_cols = (
+                        preprocessing_config['numeric_features'] +
+                        preprocessing_config['categorical_features'] +
+                        [target_column]
+                )
                 missing = set(required_cols) - set(df.columns)
-                logging.error(f"Missing columns in {batch_file}: {missing}")
+                if missing:
+                    logging.warning(f"Skipping {batch_file} - missing: {missing}")
+                    continue
+
+                # Заполнение NA для новых фичей
+                df['Order_DayOfWeek'] = df['Order_DayOfWeek'].fillna(-1).astype(int)
+                if 'DeliverySpeed' in df:
+                    df['DeliverySpeed'] = df['DeliverySpeed'].fillna('Unknown')
+
+                # Удаление строк с NA в таргете
+                df = df.dropna(subset=[target_column])
+
+                all_data.append(df)
+                logging.info(f"Processed {batch_file}")
+
+            except Exception as e:
+                logging.error(f"Failed {batch_file}: {str(e)}")
                 continue
 
-            all_data.append(df)
+        if not all_data:
+            raise ValueError("No valid data batches found after preprocessing")
 
-    #Обучение предобработчика
-    full_df = pd.concat(all_data)
-    preprocessor = create_preprocessor(config['data_preprocessing'])
-    preprocessor.fit(full_df.drop(columns=[target_column]))
-    feature_names = get_feature_names(preprocessor)
+        # Обучение препроцессора на полных данных
+        full_df = pd.concat(all_data)
+        preprocessor = create_preprocessor(preprocessing_config)  # Передаем конфиг предобработки
+        preprocessor.fit(full_df.drop(columns=[target_column]))
 
-    #Сохранение эталонной размерности (проверка на адекватность (думаю, можно и убрать...))
-    expected_shape = (len(full_df), len(feature_names))
-    logging.info(f"Expected shape after transformation: {expected_shape}")
+        # Сохранение препроцессора
+        joblib.dump(preprocessor, preprocessing_config['preprocessor_path'])
 
-    #Обработка батчей с валидацией
-    for batch_file in os.listdir(raw_data_dir):
-        if not batch_file.endswith('.csv'):
-            continue
-
-        batch_path = os.path.join(raw_data_dir, batch_file)
-        try:
-            encoding = detect_encoding(batch_path)
-            df = pd.read_csv(batch_path,
-                encoding=encoding,
-                engine='python',
-                on_bad_lines='skip',
-                dtype_backend='pyarrow',
-                skip_blank_lines=True
-            )
-
-            X = df.drop(columns=[target_column])
-            y = df[target_column]
-
-            #Преобразование и проверка
-            X_transformed = preprocessor.transform(X)
-
-            #Критическая проверка размерности
-            if X_transformed.shape[1] != len(feature_names):
-                error_msg = f"""
-                Dimension mismatch! 
-                Expected: {len(feature_names)}, Actual: {X_transformed.shape[1]}
-                Batch: {batch_file}
-                Columns: {X.columns.tolist()}
-                """
-                logging.error(error_msg)
+        # Обработка батчей
+        for batch_file in os.listdir(raw_data_dir):
+            if not batch_file.startswith('batch_'):
                 continue
 
-            #Создание DataFrame
-            processed_df = pd.DataFrame(
-                X_transformed,
-                columns=feature_names
-            )
-            processed_df[target_column] = y.values
+            batch_path = os.path.join(raw_data_dir, batch_file)
+            try:
+                df = pd.read_csv(batch_path)
+                X = df.drop(columns=[target_column])
+                y = df[target_column]
 
-            #Сохранение
-            output_path = os.path.join(processed_dir, f'processed_{batch_file}')
-            processed_df.to_csv(output_path, index=False)
-            logging.info(f"Success: {batch_file}")
+                # Преобразование
+                X_transformed = preprocessor.transform(X)
 
-        except Exception as e:
-            logging.error(f"Failed {batch_file}: {str(e)}")
-            continue
+                # Создание финального датасета
+                processed_df = pd.DataFrame(
+                    X_transformed,
+                    columns=preprocessor.get_feature_names_out()
+                )
+                processed_df[target_column] = y.values
 
-    #Сохранение предобработчика
-    joblib.dump(preprocessor, config['data_preprocessing']['preprocessor_path'])
+                # Сохранение
+                output_path = os.path.join(processed_dir, f'processed_{batch_file}')
+                processed_df.to_csv(output_path, index=False)
 
+            except Exception as e:
+                logging.error(f"Final processing failed {batch_file}: {str(e)}")
+
+    except Exception as e:
+        logging.error(f"Critical error in preprocessing: {str(e)}")
+        raise
 
 
 def get_feature_names(column_transformer):
+    """Обработчик пайплайна"""
     feature_names = []
     for name, transformer, features in column_transformer.transformers_:
         if transformer == 'drop':
             continue
 
         if isinstance(transformer, Pipeline):
-            #Обрабатываем каждый шаг пайплайна
+            # Обрабатываем каждый шаг пайплайна
             current_features = list(features)
             for step in transformer.steps:
                 if hasattr(step[1], 'get_feature_names_out'):
@@ -156,7 +177,7 @@ def get_feature_names(column_transformer):
                 elif hasattr(step[1], 'get_feature_names'):
                     current_features = step[1].get_feature_names(current_features)
                 else:
-                    #Для SimpleImputer и других трансформеров без изменения имен
+                    # Для SimpleImputer и других трансформеров без изменения имен
                     current_features = current_features
             feature_names.extend(current_features)
         else:

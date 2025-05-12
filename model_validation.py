@@ -1,88 +1,144 @@
-#Холевенкова Варвара
+# Холевенкова Варвара
 import json
 import joblib
 import pandas as pd
 import logging
 import yaml
 from datetime import datetime
-from sklearn.metrics import mean_absolute_error
 import os
-from data_preprocessing import get_feature_names
-import xgboost as xgb
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+import argparse
+import shap
+import matplotlib.pyplot as plt
 
+# Настройка логирования
 logging.basicConfig(
     filename='logs/model_validation.log',
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    filemode='w' # 'a'
 )
 
 
+MODEL_TYPES = ['xgboost', 'linear', 'decision_tree'] # Модели машинного обучения
+
+
 def load_config():
+    """Загружает конфигурацию из YAML"""
     with open('config.yaml', 'r') as f:
         return yaml.safe_load(f)
 
 
-def validate_model(config):     #Валидация модели с автоматическим определением типа данных
+def calculate_metrics(y_true, y_pred):
+    """Вычисление метрик"""
+    return {
+        'MAE': mean_absolute_error(y_true, y_pred),
+        'MSE': mean_squared_error(y_true, y_pred),
+        'R2': r2_score(y_true, y_pred)
+    }
+
+
+def validate_model(config, model_type):
+    """Валидация модели с автоматическим определением типа данных"""
     try:
-        #Загрузка модели и предобработчика
-        model = xgb.XGBRegressor()
-        model.load_model(config['model_path'] + ".json")
-        preprocessor = joblib.load(config['preprocessor_path'])
+        # Загрузка модели и предобработчика
+        model_cfg = config['model_validation']
 
-        #Загрузка данных с автоматическим определением типа
-        if os.path.exists(config['validation_data_path']):
-            df = pd.read_csv(config['validation_data_path'])
-            if 'DeliveryTime' not in df.columns:
-                df['DeliveryTime'] = (pd.to_datetime(df['Ship Date'])
-                                      - pd.to_datetime(df['Order Date'])).dt.days
-            df = df.dropna(subset=['DeliveryTime'])
-            X = preprocessor.transform(df.drop(config['target_column'], axis=1))
+        # Путь к модели
+        model_path = f"models/{model_type}.joblib"
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Model file {model_path} not found")
+
+        # Загрузка модели
+        model = joblib.load(model_path)
+
+        # Загрузка предобработчика
+        preprocessor = joblib.load(model_cfg['preprocessor_path'])
+
+        # Загрузка данных
+        if os.path.exists(model_cfg['validation_data_path']):
+            df = pd.read_csv(model_cfg['validation_data_path'])
         else:
-            logging.warning("Using processed training data for validation")
-            processed_files = [f for f in os.listdir('data/processed')
-                               if f.startswith('processed_')]
-            latest_file = max(processed_files, key=lambda x: os.path.getmtime(
-                os.path.join('data/processed', x)))
-            df = pd.read_csv(os.path.join('data/processed', latest_file))
-            X = df.drop(config['target_column'], axis=1).values  #Преобразованные данные
+            processed_dir = config['model_training']['processed_data_dir']
+            files = [f for f in os.listdir(processed_dir) if f.startswith('processed_')]
+            latest_file = max(files, key=lambda x: os.path.getctime(os.path.join(processed_dir, x)))
+            df = pd.read_csv(os.path.join(processed_dir, latest_file))
 
-        y = df[config['target_column']].values
+            # Сохраняем валидационную выборку
+            os.makedirs(os.path.dirname(model_cfg['validation_data_path']), exist_ok=True)
+            df.to_csv(model_cfg['validation_data_path'], index=False)
+            logging.info(f"Saved validation data to {model_cfg['validation_data_path']}")
 
-        #Прогноз
-        logging.info(f"Прогноз для {len(df)} записей")
+        # Применение предобработки
+        X = df.drop(model_cfg['target_column'], axis=1)
+        y = df[model_cfg['target_column']].values
+
+        # Прогнозирование
         y_pred = model.predict(X)
-        mae = mean_absolute_error(y, y_pred)
+        metrics = calculate_metrics(y, y_pred)
 
-        #Формирование отчета
-        logging.info("Формирование отчета")
+        # Формирование отчета
         report = {
             'timestamp': datetime.now().isoformat(),
-            'data_source': config['validation_data_path'] if os.path.exists(
-                config['validation_data_path']) else latest_file,
-            'model_version': config['model_version'],
-            'MAE': round(mae, 4),
-            'feature_importance': dict(zip(
-                get_feature_names(preprocessor),
-                model.feature_importances_.round(4).tolist()
-            ))
+            'model_type': model_type,
+            'model_version': model_cfg['model_version'],
+            'metrics': metrics,
+            'features': preprocessor.get_feature_names_out().tolist(),
+            'training_params': config['model_training']['model_params'].get(model_type, {})
         }
 
-        #Сохранение результатов
-        os.makedirs(os.path.dirname(config['validation_report_path']), exist_ok=True)
-        with open(config['validation_report_path'], 'w') as f:
+        # SHAP-анализ для tree-моделей
+        if model_type in ['xgboost', 'decision_tree']:
+            explainer = shap.TreeExplainer(model)
+            shap_values = explainer.shap_values(X)
+            plt.figure()
+            shap.summary_plot(shap_values, X, feature_names=preprocessor.get_feature_names_out(), show=False)
+            shap_path = f"reports/shap_{model_type}.png"
+            plt.savefig(shap_path, bbox_inches='tight')
+            plt.close()
+            report['shap_analysis'] = shap_path
+
+        # Коэффициенты для линейной регрессии
+        elif model_type == 'linear' and hasattr(model, 'coef_'):
+            report['coefficients'] = dict(zip(
+                preprocessor.get_feature_names_out(),
+                model.coef_.round(4).tolist()
+            ))
+
+        plt.figure(figsize=(10, 6))
+        plt.scatter(y, y_pred, alpha=0.3)
+        plt.plot([y.min(), y.max()], [y.min(), y.max()], 'r--')
+        plt.xlabel("True Values")
+        plt.ylabel("Predictions")
+        plot_path = f"reports/validation_plot_{model_type}.png"
+        plt.savefig(plot_path)
+        plt.close()
+        report['validation_plot'] = plot_path
+
+        # Сохранение отчета
+        report_path = model_cfg['validation_report_path'].replace(".json", f"_{model_type}.json")
+        os.makedirs(os.path.dirname(report_path), exist_ok=True)
+        with open(report_path, 'w') as f:
             json.dump(report, f, indent=2)
 
-        logging.info(f"Validation successful. MAE: {mae:.2f}")
+        logging.info(f"Validation report for {model_type} saved to {report_path}")
         return True
 
     except Exception as e:
-        logging.error(f"Validation error: {str(e)}")
+        logging.error(f"Validation error for {model_type}: {str(e)}", exc_info=True)
         return False
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Model Validation')
+    parser.add_argument('-model_type',
+                        required=True,
+                        choices=MODEL_TYPES,
+                        help='Тип модели для валидации: xgboost, linear, decision_tree')
+    args = parser.parse_args()
+
     try:
-        config = load_config()['model_validation']
-        validate_model(config)
+        config = load_config()
+        success = validate_model(config, args.model_type)
     except Exception as e:
         logging.error(f"Validation failed: {str(e)}")
