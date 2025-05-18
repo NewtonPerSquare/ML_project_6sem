@@ -1,11 +1,11 @@
-#Паскаль Егор
+# Паскаль Егор
 import argparse
-import yaml
 import logging
 import subprocess
 import sys
 from pathlib import Path
 import glob
+import yaml
 
 # Настройка логирования
 logging.basicConfig(

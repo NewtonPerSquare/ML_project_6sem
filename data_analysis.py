@@ -2,10 +2,11 @@
 import pandas as pd
 import json
 import os
-import yaml
 import logging
 import matplotlib.pyplot as plt
 import seaborn as sns
+import yaml
+import sys
 from scipy.stats import wasserstein_distance
 from scipy.spatial.distance import jensenshannon
 
@@ -20,8 +21,12 @@ logging.basicConfig(
 
 def load_config():
     """Загружает конфигурацию из YAML"""
-    with open('config.yaml', 'r') as f:
-        return yaml.safe_load(f)
+    try:
+        with open('config.yaml') as f:
+            return yaml.safe_load(f)
+    except Exception as e:
+        logging.error(f"Config load error: {str(e)}")
+        sys.exit(1)
 
 
 def get_previous_batch(current_path):
@@ -127,13 +132,10 @@ def detect_data_drift(current_df, previous_batch_path):
         return None
 
 
-def analyze_batch(batch_path, config):
-    """Анализ одного батча, формирование отчета"""
+def data_clean(df, batch_path, config):
     try:
-        df = pd.read_csv(batch_path)
-        initial_count = len(df)
+        df = df.copy()
         required_columns = ['Order Date', 'Ship Date']
-
         if not all(col in df.columns for col in required_columns):
             missing = [col for col in required_columns if col not in df.columns]
             logging.error(f"Missing columns {missing} in {os.path.basename(batch_path)}")
@@ -161,8 +163,20 @@ def analyze_batch(batch_path, config):
             lower = q1 - 1.5 * iqr
             upper = q3 + 1.5 * iqr
             df = df[(df['DeliveryTime'] >= lower) & (df['DeliveryTime'] <= upper)]
-
         df = add_features(df, config)
+        return df, invalid_dates
+
+    except Exception as e:
+        logging.error(f"Error processing {os.path.basename(batch_path)}: {str(e)}")
+        return None
+
+
+def analyze_batch(batch_path, config):
+    """Анализ одного батча, формирование отчета"""
+    try:
+        df = pd.read_csv(batch_path)
+        initial_count = len(df)
+        df, invalid_dates = data_clean(df, batch_path, config)
         os.makedirs('data/cleaned', exist_ok=True)
         clean_path = os.path.join('data/cleaned', os.path.basename(batch_path))
         df.to_csv(clean_path, index=False)
