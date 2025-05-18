@@ -5,6 +5,7 @@ import os
 import json
 import yaml
 import logging
+import sys
 
 # Настройка логирования
 logging.basicConfig(
@@ -17,8 +18,12 @@ logging.basicConfig(
 
 def load_config():
     """Загружает конфигурацию из YAML"""
-    with open('config.yaml', 'r') as f:
-        return yaml.safe_load(f)
+    try:
+        with open('config.yaml') as f:
+            return yaml.safe_load(f)
+    except Exception as e:
+        logging.error(f"Config load error: {str(e)}")
+        sys.exit(1)
 
 
 def prepare_directories(config):

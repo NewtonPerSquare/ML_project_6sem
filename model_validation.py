@@ -3,13 +3,14 @@ import json
 import joblib
 import pandas as pd
 import logging
-import yaml
 from datetime import datetime
 import os
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 import argparse
 import shap
+import yaml
+import sys
 import matplotlib.pyplot as plt
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 # Настройка логирования
 logging.basicConfig(
@@ -25,8 +26,12 @@ MODEL_TYPES = ['xgboost', 'linear', 'decision_tree'] # Модели машинн
 
 def load_config():
     """Загружает конфигурацию из YAML"""
-    with open('config.yaml', 'r') as f:
-        return yaml.safe_load(f)
+    try:
+        with open('config.yaml') as f:
+            return yaml.safe_load(f)
+    except Exception as e:
+        logging.error(f"Config load error: {str(e)}")
+        sys.exit(1)
 
 
 def calculate_metrics(y_true, y_pred):

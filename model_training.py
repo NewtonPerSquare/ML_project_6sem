@@ -1,17 +1,18 @@
 # Холевенкова Варвара
 import pandas as pd
 import os
-import yaml
 import logging
 import joblib
 import json
 import xgboost as xgb
+import argparse
+import yaml
+import sys
 from sklearn.linear_model import LinearRegression
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.base import clone
-import argparse
 
 # Настройка логирования
 logging.basicConfig(
@@ -31,8 +32,12 @@ MODELS = {
 
 def load_config():
     """Загружает конфигурацию из YAML"""
-    with open('config.yaml', 'r') as f:
-        return yaml.safe_load(f)
+    try:
+        with open('config.yaml') as f:
+            return yaml.safe_load(f)
+    except Exception as e:
+        logging.error(f"Config load error: {str(e)}")
+        sys.exit(1)
 
 
 def load_all_processed_data(processed_dir):

@@ -1,14 +1,14 @@
 # Холевенкова Варвара
 import pandas as pd
-import yaml
 import joblib
 import logging
+import os
+import yaml
+import sys
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
-import os
-import chardet
 
 # Настройка логирования
 logging.basicConfig(
@@ -21,15 +21,12 @@ logging.basicConfig(
 
 def load_config():
     """Загружает конфигурацию из YAML"""
-    with open('config.yaml', 'r') as f:
-        return yaml.safe_load(f)
-
-
-def detect_encoding(file_path):
-    """Определяем кодировку (без этого постоянно падает)"""
-    with open(file_path, 'rb') as f:
-        result = chardet.detect(f.read())
-    return result['encoding']
+    try:
+        with open('config.yaml') as f:
+            return yaml.safe_load(f)
+    except Exception as e:
+        logging.error(f"Config load error: {str(e)}")
+        sys.exit(1)
 
 
 def create_preprocessor(config):
