@@ -212,7 +212,7 @@ if __name__ == "__main__":
                         choices=MODEL_TYPES,
                         default='xgboost',
                         help="Выбор модели для inference (по умолчанию: xgboost)")
-
+    parser.add_argument('-iterations', type=int, default=1, help='Number of training iterations')
     args = parser.parse_args()
     config = load_config()
 
