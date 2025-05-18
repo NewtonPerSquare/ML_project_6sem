@@ -1,0 +1,62 @@
+name: ML Pipeline CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 12 * * *'  # Ежедневно в 12:00 UTC
+
+jobs:
+  train-and-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run data pipeline
+      run: |
+        python data_collection.py
+        python data_analysis.py
+        python data_preprocessing.py
+
+    - name: Train models
+      run: |
+        python model_training.py -model_type xgboost
+        python model_training.py -model_type decision_tree
+        python model_training.py -model_type linear
+
+    - name: Validate models
+      run: |
+        python model_validation.py -model_type xgboost
+        python model_validation.py -model_type decision_tree
+        python model_validation.py -model_type linear
+
+    - name: Generate summary
+      run: python run.py -mode summary
+
+    - name: Run tests
+      run: python -m pytest tests/ -v
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: ml-artifacts
+        path: |
+          logs/
+          models/
+          reports/
+        retention-days: 7
