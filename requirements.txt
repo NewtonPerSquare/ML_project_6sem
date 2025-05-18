@@ -11,3 +11,4 @@ seaborn>=0.11.0
 scipy>=1.7.0
 matplotlib>=3.5.0
 shap==0.47.2
+pytest==8.3.3
